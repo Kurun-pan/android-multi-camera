@@ -1,2 +1,4 @@
 # android-multi-camera
-Android multi camera API sample app
+
+Android Multi-Camera sample app
+https://source.android.com/devices/camera/multi-camera
