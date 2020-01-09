@@ -1,13 +1,17 @@
+/**
+ * Use android / camera-samples
+ * https://github.com/android/camera-samples/blob/master/Camera2BasicKotlin/Application/src/main/java/com/example/android/camera2basic/CompareSizesByArea.kt
+ */
 package com.example.multicameraapi.services
 
-/* Use googlearchive / android-Camera2Basic source code
- * https://github.com/googlearchive/android-Camera2Basic/blob/master/kotlinApp/Application/src/main/java/com/example/android/camera2basic/CompareSizesByArea.kt
- */
 import android.util.Size
 import java.lang.Long.signum
 
 import java.util.Comparator
 
+/**
+ * Compares two `Size`s based on their areas.
+ */
 internal class CompareSizesByArea : Comparator<Size> {
 
     // We cast here to ensure the multiplications won't overflow
