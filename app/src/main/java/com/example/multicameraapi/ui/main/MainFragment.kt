@@ -3,10 +3,9 @@ package com.example.multicameraapi.ui.main
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.RectF
-import android.hardware.camera2.CameraAccessException
-import android.hardware.camera2.CameraManager
 import android.os.Bundle
 import android.util.Log
 import android.util.Size
@@ -14,26 +13,29 @@ import android.view.*
 import android.widget.SeekBar
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
-import com.example.multicameraapi.R
 
+import android.hardware.camera2.CameraManager
+
+import com.example.multicameraapi.R
 import com.example.multicameraapi.models.CameraIdInfo
 import com.example.multicameraapi.models.State
 import com.example.multicameraapi.services.Camera
-import com.example.multicameraapi.views.listeners.SurfaceTextureWaiter
+import com.example.multicameraapi.listeners.SurfaceTextureWaiter
 
 import kotlinx.android.synthetic.main.fragment_main.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.max
 import kotlin.math.roundToInt
 
 class MainFragment : Fragment() {
 
     companion object {
+        private val TAG = MainFragment::class.java.toString()
         private const val FRAGMENT_TAG_DIALOG = "tag_dialog"
         private const val REQUEST_CAMERA_PERMISSION = 1000
-        private val TAG = MainFragment::class.java.toString()
         fun newInstance() = MainFragment()
     }
 
@@ -57,10 +59,10 @@ class MainFragment : Fragment() {
             override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
                 this.progressValue = progress
                 camera?.maxZoom?.let {
-                    if(!camera0View.isAvailable || !camera1View.isAvailable )
+                    if(!camera0View.isAvailable || !camera1View.isAvailable)
                         return@let
 
-                    val zoomValue = progressValue.toDouble()/seekBar.max * it
+                    val zoomValue = progressValue.toDouble() / seekBar.max * it
                     camera?.setZoom(zoomValue)
                 }
             }
@@ -80,7 +82,6 @@ class MainFragment : Fragment() {
         camera = Camera.initInstance(manager)
         camera?.maxZoom?.let {
             val actualProgress = (100 / it).roundToInt()
-            Log.d(TAG, "===== actual $actualProgress")
             zoomBar.progress = actualProgress
         }
     }
@@ -89,29 +90,34 @@ class MainFragment : Fragment() {
         super.onResume()
 
         if (camera0View.isAvailable && camera1View.isAvailable) {
-            //openCamera(camera0View.width, camera0View.height)
+            openCamera(camera0View.width, camera0View.height)
             return
         }
 
+        // wait for TextureView available
         val waiter0 = SurfaceTextureWaiter(camera0View)
         val waiter1 = SurfaceTextureWaiter(camera1View)
-
         GlobalScope.launch {
             val result0 = waiter0.textureIsReady()
             val result1 = waiter1.textureIsReady()
 
+            if (result1.state != State.ON_TEXTURE_AVAILABLE)
+                Log.e(TAG, "camera1View unexpected state = $result1.state")
+
             when (result0.state) {
                 State.ON_TEXTURE_AVAILABLE -> {
                     withContext(Dispatchers.Main) {
-                        openDualCamera(width = result0.width, height = result0.height)
+                        openDualCamera(result0.width, result0.height)
                     }
                 }
                 State.ON_TEXTURE_SIZE_CHANGED -> {
                     withContext(Dispatchers.Main) {
-                        configureTransform(viewWidth = result0.width, viewHeight = result0.height)
+                        val matrix = calculateTransform(result0.width, result0.height)
+                        camera0View.setTransform(matrix)
                     }
                 }
                 else -> {
+                    // do nothing.
                 }
             }
         }
@@ -162,7 +168,9 @@ class MainFragment : Fragment() {
                 previewSize = it.getPreviewSize(aspectRatio)
 
                 camera0View.setAspectRatio(previewSize.height, previewSize.width)
-                configureTransform(width, height)
+
+                val matrix = calculateTransform(width, height)
+                camera0View.setTransform(matrix)
                 it.open()
 
                 val texture1 = camera0View.surfaceTexture
@@ -171,10 +179,9 @@ class MainFragment : Fragment() {
 
                 updateCameraStatus(it.getCameraIds())
             }
-        } catch (e: CameraAccessException) {
+        }
+        catch (e: Exception) {
             e.printStackTrace()
-        } catch (e: InterruptedException) {
-            throw RuntimeException("Interrupted while trying to lock camera opening.", e)
         }
     }
 
@@ -196,7 +203,6 @@ class MainFragment : Fragment() {
                 val aspectRatio: Float = width / height.toFloat()
                 previewSize = it.getPreviewSize(aspectRatio)
 
-                // FIXME should write this better
                 camera0View.setAspectRatio(previewSize.height, previewSize.width)
                 camera1View.setAspectRatio(previewSize.height, previewSize.width)
 
@@ -205,18 +211,17 @@ class MainFragment : Fragment() {
                 camera1View.setTransform(matrix)
                 it.open()
 
-                val texture1 = camera0View.surfaceTexture
-                val texture2 = camera1View.surfaceTexture
+                val texture0 = camera0View.surfaceTexture
+                val texture1 = camera1View.surfaceTexture
+                texture0.setDefaultBufferSize(previewSize.width, previewSize.height)
                 texture1.setDefaultBufferSize(previewSize.width, previewSize.height)
-                texture2.setDefaultBufferSize(previewSize.width, previewSize.height)
-                it.start(listOf(Surface(texture1), Surface(texture2)))
+                it.start(listOf(Surface(texture0), Surface(texture1)))
 
                 updateCameraStatus(it.getCameraIds())
             }
-        } catch (e: CameraAccessException) {
+        }
+        catch (e: Exception) {
             e.printStackTrace()
-        } catch (e: InterruptedException) {
-            throw RuntimeException("Interrupted while trying to lock camera opening.", e)
         }
     }
 
@@ -224,22 +229,23 @@ class MainFragment : Fragment() {
         val (logicalCameraId, physicalCameraIds) = cameraIdInfo
 
         if (logicalCameraId.isNotEmpty()) {
-            tv_multiCameraSupport.text = "Multi-Camera Supported"
-            tv_logicalCamera.text = "Logical Camera ID = $logicalCameraId"
+            tv_multiCameraSupport.text = "Yes"
+            tv_logicalCamera.text = logicalCameraId
         }
         else {
-            tv_multiCameraSupport.text = "Multi-Camera Not Supported"
-            tv_logicalCamera.text = "No Logical Camera"
+            tv_multiCameraSupport.text = "No"
+            tv_multiCameraSupport.setTextColor(Color.WHITE)
+            tv_logicalCamera.text = "-"
         }
 
         if (physicalCameraIds.isNotEmpty()) {
-            tv_physicalCamera.text = "Physical Camera ID = " + physicalCameraIds
+            tv_physicalCamera.text = physicalCameraIds
                 .asSequence()
                 .map { s -> "$s" }
                 .reduce { acc, s -> "$acc, $s" }
         }
         else
-            tv_physicalCamera.text = "No Physical Camera"
+            tv_physicalCamera.text = "-"
     }
 
     private fun calculateTransform(viewWidth: Int, viewHeight: Int) : Matrix {
@@ -252,7 +258,7 @@ class MainFragment : Fragment() {
 
         if (Surface.ROTATION_90 == rotation || Surface.ROTATION_270 == rotation) {
             bufferRect.offset(centerX - bufferRect.centerX(), centerY - bufferRect.centerY())
-            val scale = Math.max(
+            val scale = max(
                 viewHeight.toFloat() / previewSize.height,
                 viewWidth.toFloat() / previewSize.width
             )
@@ -266,34 +272,5 @@ class MainFragment : Fragment() {
             matrix.postRotate(180f, centerX, centerY)
         }
         return matrix
-    }
-
-    private fun configureTransform(viewWidth: Int, viewHeight: Int) {
-        activity ?: return
-
-        val rotation = activity!!.windowManager.defaultDisplay.rotation
-        val matrix = Matrix()
-        val viewRect = RectF(0f, 0f, viewWidth.toFloat(), viewHeight.toFloat())
-        val bufferRect = RectF(0f, 0f, previewSize.height.toFloat(), previewSize.width.toFloat())
-        val centerX = viewRect.centerX()
-        val centerY = viewRect.centerY()
-
-        if (Surface.ROTATION_90 == rotation || Surface.ROTATION_270 == rotation) {
-            bufferRect.offset(centerX - bufferRect.centerX(), centerY - bufferRect.centerY())
-            val scale = Math.max(
-                viewHeight.toFloat() / previewSize.height,
-                viewWidth.toFloat() / previewSize.width
-            )
-            with(matrix) {
-                setRectToRect(viewRect, bufferRect, Matrix.ScaleToFit.FILL)
-                postScale(scale, scale, centerX, centerY)
-                postRotate((90 * (rotation - 2)).toFloat(), centerX, centerY)
-            }
-        }
-        else if (Surface.ROTATION_180 == rotation) {
-            matrix.postRotate(180f, centerX, centerY)
-        }
-
-        camera0View.setTransform(matrix)
     }
 }

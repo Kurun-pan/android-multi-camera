@@ -1,4 +1,4 @@
-package com.example.multicameraapi.views.listeners
+package com.example.multicameraapi.listeners
 
 import android.graphics.SurfaceTexture
 import android.view.TextureView

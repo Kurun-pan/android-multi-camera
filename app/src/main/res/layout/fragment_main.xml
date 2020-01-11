@@ -27,6 +27,8 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:textColor="@color/white"
+                android:textSize="16sp"
                 android:text="Zoom: " />
 
             <SeekBar
@@ -45,13 +47,16 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textSize="16sp" />
+                android:textColor="@color/white"
+                android:textSize="16sp"
+                android:text="Multi-Camera Supported:"/>
 
             <TextView
                 android:id="@+id/tv_multiCameraSupport"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="16dp"
+                android:textColor="@color/white"
                 android:textSize="16sp"/>
         </LinearLayout>
 
@@ -62,13 +67,17 @@
 
             <TextView
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"/>
+                android:layout_height="wrap_content"
+                android:textColor="@color/white"
+                android:textSize="16sp"
+                android:text="Logical Camera ID:"/>
 
             <TextView
                 android:id="@+id/tv_logicalCamera"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="16dp"
+                android:textColor="@color/white"
                 android:textSize="16sp" />
         </LinearLayout>
 
@@ -80,13 +89,16 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textSize="16sp" />
+                android:textColor="@color/white"
+                android:textSize="16sp"
+                android:text="Physical Camera ID:"/>
 
             <TextView
                 android:id="@+id/tv_physicalCamera"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
+                android:textColor="@color/white"
                 android:textSize="16sp"/>
         </LinearLayout>
     </LinearLayout>

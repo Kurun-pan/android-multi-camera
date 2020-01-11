@@ -1,8 +1,23 @@
-package com.example.multicameraapi.services
-
-/* Use googlearchive / android-Camera2Basic source code
- * https://github.com/googlearchive/android-Camera2Basic/blob/master/kotlinApp/Application/src/main/java/com/example/android/camera2basic/Camera2BasicFragment.kt
+/*
+ * Copyright 2017 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
+/**
+ * Use android / camera-samples
+ * https://github.com/android/camera-samples/blob/master/Camera2BasicKotlin/Application/src/main/java/com/example/android/camera2basic/Camera2BasicFragment.kt
+ */
+package com.example.multicameraapi.services
 
 import android.graphics.ImageFormat
 import android.graphics.Rect
@@ -29,6 +44,7 @@ import com.example.multicameraapi.utils.camera.isAutoExposureSupported
 import com.example.multicameraapi.utils.camera.isContinuousAutoFocusSupported
 import com.example.multicameraapi.models.CameraIdInfo
 import java.util.concurrent.*
+import kotlin.math.floor
 
 private const val TAG = "CAMERA"
 
@@ -107,6 +123,7 @@ class Camera constructor(private val cameraManager: CameraManager) {
         cameraId = setUpCameraId(manager = cameraManager)
         characteristics = cameraManager.getCameraCharacteristics(cameraId)
         activeArraySize = characteristics.get(SENSOR_INFO_ACTIVE_ARRAY_SIZE) ?: Rect()
+
         maxZoom = characteristics.get(SCALER_AVAILABLE_MAX_DIGITAL_ZOOM)?.toDouble() ?: ZOOM_SCALE
         calculateZoomSize(manager = cameraManager)
         calculateActiveArraySize(manager = cameraManager)
@@ -241,8 +258,9 @@ class Camera constructor(private val cameraManager: CameraManager) {
             startBackgroundHandler()
 
             cameraManager.openCamera(cameraId, cameraStateCallback, backgroundHandler)
-        } catch (e: SecurityException) {
-
+        }
+        catch (e: SecurityException) {
+            e.printStackTrace()
         }
     }
 
@@ -251,19 +269,21 @@ class Camera constructor(private val cameraManager: CameraManager) {
      */
     fun start(surfaces: List<Surface>) {
         this.surfaces = surfaces
-        if(surfaces.size > 1) {
+        if(surfaces.size > 1)
             startDualCamera(surfaces)
-        } else {
+        else
             startSingleCamera(surfaces[0])
-        }
     }
 
     fun takePicture(handler: ImageHandler) {
         if (cameraDevice == null) {
-            throw IllegalStateException("Camera device not ready")
+            Log.e(TAG, "Camera device not ready")
+            return
         }
 
-        if (isClosed) return
+        if (isClosed)
+            return
+
         imageReader?.setOnImageAvailableListener({ reader ->
             val image = reader.acquireNextImage()
             backgroundHandler?.post(handler.handleImage(image = image))
@@ -304,9 +324,8 @@ class Camera constructor(private val cameraManager: CameraManager) {
 
     /** Sets the digital zoom. Must be called while the preview is active.  */
     fun setZoom(zoomValue: Double) {
-        if (zoomValue > maxZoom) {
-            throw IllegalArgumentException("out of bounds zoom")
-        }
+        if (zoomValue > maxZoom)
+            Log.e(TAG, "out of bounds zoom")
         this.zoomValue = zoomValue
 
         try {
@@ -318,7 +337,6 @@ class Camera constructor(private val cameraManager: CameraManager) {
         } catch (e: CameraAccessException) {
             Log.w(TAG, e)
         }
-
     }
 
     /**
@@ -409,7 +427,7 @@ class Camera constructor(private val cameraManager: CameraManager) {
     }
 
     private fun startDualCamera(surfaces: List<Surface>) {
-        val outputConfigs =  surfaces.mapIndexed { index, surface ->
+        val outputConfigs = surfaces.mapIndexed { index, surface ->
             val physicalCameraId = physicalCameraIds.toList()[index]
             val config = OutputConfiguration(surface)
             config.setPhysicalCameraId(physicalCameraId)
@@ -439,18 +457,21 @@ class Camera constructor(private val cameraManager: CameraManager) {
             val isLogicalCamera = capabilities!!.contains(
                 CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA
             )
+
             if (isLogicalCamera) {
                 this.physicalCameraIds = characteristics.physicalCameraIds
                 return cameraId
             }
         }
+
+        this.physicalCameraIds = manager.cameraIdList.toSet()
         return "0" // default Camera. Logical Camera is not supported
     }
 
     private fun calculateZoomSize(manager: CameraManager) {
         physicalCameraIds.forEach {
             val characteristics = manager.getCameraCharacteristics(it)
-            Log.d(TAG, "==== zoom $it ${characteristics.get(SCALER_AVAILABLE_MAX_DIGITAL_ZOOM)?.toDouble()}")
+            Log.d(TAG, "zoom $it ${characteristics.get(SCALER_AVAILABLE_MAX_DIGITAL_ZOOM)?.toDouble()}")
         }
     }
 
@@ -458,12 +479,13 @@ class Camera constructor(private val cameraManager: CameraManager) {
         physicalCameraIds.forEach {
             val characteristics = manager.getCameraCharacteristics(it)
             val activeArraySize = characteristics.get(SENSOR_INFO_ACTIVE_ARRAY_SIZE) ?: Rect()
-            Log.d(TAG, "==== width ${activeArraySize.width()} height ${activeArraySize.height()} $it")
+            Log.d(TAG, "width ${activeArraySize.width()} height ${activeArraySize.height()} $it")
         }
     }
 
     private fun startBackgroundHandler() {
-        if (backgroundThread != null) return
+        if (backgroundThread != null)
+            return
 
         backgroundThread = HandlerThread("Camera-$cameraId").also {
             it.start()
@@ -479,7 +501,7 @@ class Camera constructor(private val cameraManager: CameraManager) {
             backgroundThread = null
             backgroundHandler = null
         } catch (e: InterruptedException) {
-            Log.e(TAG, "===== stop background error $e")
+            Log.e(TAG, "stop background error $e")
         }
     }
 
@@ -487,6 +509,7 @@ class Camera constructor(private val cameraManager: CameraManager) {
         try {
             if (!openLock.tryAcquire(1L, TimeUnit.SECONDS)) return
             if (isClosed) return
+
             state = State.PREVIEW
             requestBuilder = createPreviewRequestBuilder()
             surfaces?.forEach {
@@ -510,7 +533,7 @@ class Camera constructor(private val cameraManager: CameraManager) {
     private fun createPreviewRequestBuilder(): CaptureRequest.Builder? {
         val builder = cameraDevice?.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
         enableDefaultModes(builder)
-        setCropRegion(builder, zoomValue);
+        setCropRegion(builder, zoomValue)
         return builder
     }
 
@@ -616,11 +639,9 @@ class Camera constructor(private val cameraManager: CameraManager) {
 
     private fun setCropRegion(builder: CaptureRequest.Builder?, zoom: Double) {
         builder?.let {
-            Log.d(TAG, "setCropRegion(x$zoom)")
-
-            val width = Math.floor(activeArraySize.width() / zoom).toInt()
+            val width = floor(activeArraySize.width() / zoom).toInt()
             val left = (activeArraySize.width() - width) / 2
-            val height = Math.floor(activeArraySize.height() / zoom).toInt()
+            val height = floor(activeArraySize.height() / zoom).toInt()
             val top = (activeArraySize.height() - height) / 2
             Log.d(TAG, "crop region(left=$left, top=$top, right=${left + width}, bottom=${top + height}) zoom($zoom)")
 
